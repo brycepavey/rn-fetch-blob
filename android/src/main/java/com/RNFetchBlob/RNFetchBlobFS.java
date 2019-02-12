@@ -30,6 +30,34 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+import org.apache.commons.io.input.Tailer;
+import org.apache.commons.io.input.TailerListenerAdapter;
+
+
+class FsListener extends TailerListenerAdapter {
+    private RNFetchBlobFS fs;
+    private String streamId;
+
+    public FsListener(RNFetchBlobFS fs, String streamId) {
+        super();
+        this.fs = fs;
+        this.streamId = streamId;
+    }
+
+    public void handle(String buffer) {
+        // copy to a readable byte array
+        byte [] bufferBytes = buffer.getBytes();
+        byte [] copy = new byte[bufferBytes.length];
+        for(int i =0; i < bufferBytes.length; i++) {
+            copy[i] = bufferBytes[i];
+        }
+        
+        // send the base64 encoded data to the JS context
+        this.fs.emitStreamEvent(this.streamId, "data", Base64.encodeToString(copy, Base64.NO_WRAP));
+    }
+}
+
+
 class RNFetchBlobFS {
 
     private ReactApplicationContext mCtx;
@@ -307,69 +335,11 @@ class RNFetchBlobFS {
             if(bufferSize > 0)
                 chunkSize = bufferSize;
 
-            InputStream fs;
-
-            if(resolved != null && path.startsWith(RNFetchBlobConst.FILE_PREFIX_BUNDLE_ASSET)) {
-                fs = RNFetchBlob.RCTContext.getAssets().open(path.replace(RNFetchBlobConst.FILE_PREFIX_BUNDLE_ASSET, ""));
-            }
-            // fix issue 287
-            else if(resolved == null) {
-                fs = RNFetchBlob.RCTContext.getContentResolver().openInputStream(Uri.parse(path));
-            }
-            else {
-                fs = new FileInputStream(new File(path));
-            }
-
-            byte[] buffer = new byte[chunkSize];
-            int cursor = 0;
-            boolean error = false;
-
-            if (encoding.equalsIgnoreCase("utf8")) {
-                CharsetEncoder encoder = Charset.forName("UTF-8").newEncoder();
-                while ((cursor = fs.read(buffer)) != -1) {
-                    encoder.encode(ByteBuffer.wrap(buffer).asCharBuffer());
-                    String chunk = new String(buffer, 0, cursor);
-                    emitStreamEvent(streamId, "data", chunk);
-                    if(tick > 0)
-                        SystemClock.sleep(tick);
-                }
-            } else if (encoding.equalsIgnoreCase("ascii")) {
-                while ((cursor = fs.read(buffer)) != -1) {
-                    WritableArray chunk = Arguments.createArray();
-                    for(int i =0;i<cursor;i++)
-                    {
-                        chunk.pushInt((int)buffer[i]);
-                    }
-                    emitStreamEvent(streamId, "data", chunk);
-                    if(tick > 0)
-                        SystemClock.sleep(tick);
-                }
-            } else if (encoding.equalsIgnoreCase("base64")) {
-                while ((cursor = fs.read(buffer)) != -1) {
-                    if(cursor < chunkSize) {
-                        byte[] copy = new byte[cursor];
-                        System.arraycopy(buffer, 0, copy, 0, cursor);
-                        emitStreamEvent(streamId, "data", Base64.encodeToString(copy, Base64.NO_WRAP));
-                    }
-                    else
-                        emitStreamEvent(streamId, "data", Base64.encodeToString(buffer, Base64.NO_WRAP));
-                    if(tick > 0)
-                        SystemClock.sleep(tick);
-                }
-            } else {
-                emitStreamEvent(
-                        streamId,
-                        "error",
-                        "EINVAL",
-                        "Unrecognized encoding `" + encoding + "`, should be one of `base64`, `utf8`, `ascii`"
-                );
-                error = true;
-            }
-
-            if(!error)
-                emitStreamEvent(streamId, "end", "");
-            fs.close();
-            buffer = null;
+                FsListener listener = new FsListener(this, streamId);
+                Tailer tailer = new Tailer(new File(path), listener, 10);
+                Thread thread = new Thread(tailer);
+                thread.start();
+    
         } catch (FileNotFoundException err) {
             emitStreamEvent(
                     streamId,
