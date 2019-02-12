@@ -325,7 +325,7 @@ class RNFetchBlobFS {
      * @param encoding  File stream decoder, should be one of `base64`, `utf8`, `ascii`
      * @param bufferSize    Buffer size of read stream, default to 4096 (4095 when encode is `base64`)
      */
-    void readStream(String path, String encoding, int bufferSize, int tick, final String streamId) {
+    void readStream(String path, String encoding, int bufferSize, int tick, final String streamId) throws FileNotFoundException {
         String resolved = normalizePath(path);
         if(resolved != null)
             path = resolved;
@@ -340,13 +340,6 @@ class RNFetchBlobFS {
                 Thread thread = new Thread(tailer);
                 thread.start();
     
-        } catch (FileNotFoundException err) {
-            emitStreamEvent(
-                    streamId,
-                    "error",
-                    "ENOENT",
-                    "No such file '" + path + "'"
-            );
         } catch (Exception err) {
             emitStreamEvent(
                     streamId,
@@ -1012,7 +1005,7 @@ class RNFetchBlobFS {
      * @param event Event name, `data`, `end`, `error`, etc.
      * @param data  Event data
      */
-    private void emitStreamEvent(String streamName, String event, String data) {
+    public void emitStreamEvent(String streamName, String event, String data) {
         WritableMap eventData = Arguments.createMap();
         eventData.putString("event", event);
         eventData.putString("detail", data);
@@ -1020,7 +1013,7 @@ class RNFetchBlobFS {
     }
 
     // "event" always is "data"...
-    private void emitStreamEvent(String streamName, String event, WritableArray data) {
+    public void emitStreamEvent(String streamName, String event, WritableArray data) {
         WritableMap eventData = Arguments.createMap();
         eventData.putString("event", event);
         eventData.putArray("detail", data);
@@ -1028,7 +1021,7 @@ class RNFetchBlobFS {
     }
 
     // "event" always is "error"...
-    private void emitStreamEvent(String streamName, String event, String code, String message) {
+    public void emitStreamEvent(String streamName, String event, String code, String message) {
         WritableMap eventData = Arguments.createMap();
         eventData.putString("event", event);
         eventData.putString("code", code);

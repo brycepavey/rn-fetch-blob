@@ -304,7 +304,11 @@ public class RNFetchBlob extends ReactContextBaseJavaModule {
             @Override
             public void run() {
                 RNFetchBlobFS fs = new RNFetchBlobFS(ctx);
-                fs.readStream(path, encoding, bufferSize, tick, streamId);
+                try {
+                    fs.readStream(path, encoding, bufferSize, tick, streamId);
+                } catch (FileNotFoundException e) {
+                    e.printStackTrace();
+                }
             }
         });
     }
